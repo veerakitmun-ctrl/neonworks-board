@@ -694,6 +694,30 @@ let wtAssignMode = false;
 let wtSelectedColor = WORKTYPE_PALETTE[0];
 const STORE_KEY = "workload-board-projects";
 
+// Storage abstraction: use Claude's window.storage if available, else localStorage
+const storage = {
+  async get(key, shared){
+    if(window.storage && typeof window.storage.get === 'function'){
+      return window.storage.get(key, shared);
+    }
+    // localStorage fallback (GitHub Pages)
+    try{
+      const val = localStorage.getItem(key);
+      return val ? {key, value: val} : null;
+    }catch(e){ return null; }
+  },
+  async set(key, value, shared){
+    if(window.storage && typeof window.storage.set === 'function'){
+      return window.storage.set(key, value, shared);
+    }
+    // localStorage fallback
+    try{
+      localStorage.setItem(key, value);
+      return {key, value};
+    }catch(e){ return null; }
+  }
+};
+
 let projects = [];
 let saveTimer = null;
 let expandedIds = new Set();
@@ -749,7 +773,7 @@ function personColor(name){
 
 async function loadPeople(){
   try{
-    const res = await window.storage.get(PEOPLE_KEY, true);
+    const res = await storage.get(PEOPLE_KEY, true);
     if(res && res.value){ people = JSON.parse(res.value); return; }
   }catch(e){ /* not found yet */ }
   people = PEOPLE_SEED.slice();
@@ -757,12 +781,12 @@ async function loadPeople(){
 }
 
 async function persistPeople(){
-  try{ await window.storage.set(PEOPLE_KEY, JSON.stringify(people), true); }catch(e){ /* ignore */ }
+  try{ await storage.set(PEOPLE_KEY, JSON.stringify(people), true); }catch(e){ /* ignore */ }
 }
 
 async function loadWorktypes(){
   try{
-    const res = await window.storage.get(WORKTYPE_KEY, true);
+    const res = await storage.get(WORKTYPE_KEY, true);
     if(res && res.value){ worktypes = JSON.parse(res.value); return; }
   }catch(e){ /* not found yet */ }
   worktypes = WORKTYPE_SEED.slice();
@@ -770,7 +794,7 @@ async function loadWorktypes(){
 }
 
 async function persistWorktypes(){
-  try{ await window.storage.set(WORKTYPE_KEY, JSON.stringify(worktypes), true); }catch(e){ /* ignore */ }
+  try{ await storage.set(WORKTYPE_KEY, JSON.stringify(worktypes), true); }catch(e){ /* ignore */ }
 }
 
 function worktypeColorOf(name){
@@ -1480,7 +1504,7 @@ function isOverdue(p){
 
 async function loadData(){
   try{
-    const res = await window.storage.get(STORE_KEY, true);
+    const res = await storage.get(STORE_KEY, true);
     if(res && res.value){
       projects = JSON.parse(res.value);
       return;
@@ -1497,7 +1521,7 @@ async function persist(retryCount = 0){
   statusEl.classList.add('saving');
   statusEl.innerHTML = 'กำลังบันทึก<b>…</b>';
   try{
-    await window.storage.set(STORE_KEY, JSON.stringify(projects), true);
+    await storage.set(STORE_KEY, JSON.stringify(projects), true);
     statusEl.classList.remove('saving');
     clearTimeout(_retryTimer);
     const t = new Date();
