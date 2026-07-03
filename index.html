@@ -292,6 +292,22 @@
   .wl-list-date{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--ink-soft);flex-shrink:0;}
   .wl-list-done .wl-list-label{opacity:.45;text-decoration:line-through;}
   .wl-list-done .wl-list-date{opacity:.45;}
+
+  .hm-wrap{overflow-x:auto;}
+  .hm-table{border-collapse:separate;border-spacing:3px;min-width:500px;}
+  .hm-th{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--ink-soft);padding:4px 8px;text-align:center;white-space:nowrap;}
+  .hm-name{font-size:12.5px;font-weight:600;color:var(--ink);padding:4px 12px 4px 0;white-space:nowrap;text-align:left;}
+  .hm-cell{width:52px;height:36px;border-radius:6px;text-align:center;vertical-align:middle;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;cursor:default;transition:transform .1s;}
+  .hm-cell:hover{transform:scale(1.08);}
+  .hm-0{background:#EEF1F6;color:var(--ink-soft);}
+  .hm-1{background:#C9E8B0;color:#2E6B1A;}
+  .hm-2{background:#F9DDA0;color:#7A5500;}
+  .hm-3{background:#F3B98E;color:#7A3200;}
+  .hm-4{background:#F6A0A0;color:#7A1A1A;}
+  .hm-5{background:#E05555;color:#fff;}
+  .hm-legend{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:11px;color:var(--ink-soft);}
+  .hm-legend-item{display:flex;align-items:center;gap:4px;}
+  .hm-legend-swatch{width:14px;height:14px;border-radius:3px;display:inline-block;}
   .wl-empty{font-size:12px;color:var(--ink-soft);font-style:italic;}
 
   .dl-month-header{font-family:'Noto Serif Thai',serif;font-weight:600;font-size:15px;color:var(--ink);margin:18px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--line);}
@@ -517,7 +533,11 @@
   </div>
 
   <div id="viewWorkload" class="view-section">
-    <p style="font-size:12.5px;color:var(--ink-soft);margin:0 0 16px;">นับจากงาน/ดีเทลที่ยังไม่ Done — เรียงจากคนที่งานเยอะสุดไปน้อยสุด</p>
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+      <p style="font-size:12.5px;color:var(--ink-soft);margin:0;flex:1;">นับจากงาน/ดีเทลที่ยังไม่ Done — เรียงจากคนที่งานเยอะสุดไปน้อยสุด</p>
+      <button class="tab-btn" id="wlToggleBtn" onclick="toggleWlView()" style="font-size:11px;padding:6px 12px;">🔥 Heatmap</button>
+    </div>
+    <div id="workloadHeatmap" style="display:none;"></div>
     <div id="workloadList"></div>
   </div>
 
@@ -1119,6 +1139,104 @@ function renderWorkload(){
 }
 
 function dueDateOf(item){ return item.deadline || item.start || null; }
+
+let wlHeatmapMode = false;
+
+function toggleWlView(){
+  wlHeatmapMode = !wlHeatmapMode;
+  const btn = document.getElementById('wlToggleBtn');
+  const hm = document.getElementById('workloadHeatmap');
+  const list = document.getElementById('workloadList');
+  if(wlHeatmapMode){
+    btn.textContent = '☰ ลิสต์';
+    hm.style.display = '';
+    list.style.display = 'none';
+    renderHeatmap();
+  } else {
+    btn.textContent = '🔥 Heatmap';
+    hm.style.display = 'none';
+    list.style.display = '';
+  }
+}
+window.toggleWlView = toggleWlView;
+
+function renderHeatmap(){
+  const el = document.getElementById('workloadHeatmap');
+  if(!el) return;
+
+  // Build 8 weeks starting from current week's Monday
+  const today = new Date();
+  const dayOfWeek = today.getDay() === 0 ? 6 : today.getDay() - 1;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - dayOfWeek);
+  monday.setHours(0,0,0,0);
+
+  const weeks = [];
+  for(let w = 0; w < 8; w++){
+    const start = new Date(monday);
+    start.setDate(monday.getDate() + w * 7);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    weeks.push({start, end,
+      label: `${start.getDate()} ${MONTH_NAMES_TH[start.getMonth()].slice(0,3)}`
+    });
+  }
+
+  // Count tasks per person per week
+  const personWeekCount = {};
+  people.forEach(person => { personWeekCount[person.name] = new Array(8).fill(0); });
+
+  projects.forEach(p => {
+    const allItems = [
+      ...(p.owner ? [{status: p.status, deadline: p.deadline, start: p.start, owner: p.owner}] : []),
+      ...(p.subtasks||[]).map(s => ({status: s.status, deadline: s.deadline, start: s.start, owner: s.owner}))
+    ];
+    allItems.forEach(item => {
+      if(item.status === 'Done') return;
+      const due = item.deadline || item.start;
+      if(!due) return;
+      const dueDate = new Date(due + 'T00:00:00');
+      weeks.forEach((w, wi) => {
+        if(dueDate >= w.start && dueDate <= w.end){
+          parseOwners(item.owner||'').forEach(name => {
+            if(personWeekCount[name]) personWeekCount[name][wi]++;
+          });
+        }
+      });
+    });
+  });
+
+  function hmClass(n){ return n === 0 ? 'hm-0' : n === 1 ? 'hm-1' : n === 2 ? 'hm-2' : n === 3 ? 'hm-3' : n === 4 ? 'hm-4' : 'hm-5'; }
+
+  let html = '<div class="hm-wrap"><table class="hm-table"><thead><tr><th class="hm-th" style="text-align:left">คน</th>';
+  weeks.forEach(w => { html += `<th class="hm-th">${w.label}</th>`; });
+  html += '</tr></thead><tbody>';
+
+  TEAMS.forEach(t => {
+    const teamPeople = people.filter(p => p.team === t.key);
+    if(!teamPeople.length) return;
+    html += `<tr><td colspan="${weeks.length+1}" style="padding:10px 0 4px;font-family:'JetBrains Mono',sans-serif;font-size:10px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em;">${esc(t.label)}</td></tr>`;
+    teamPeople.forEach(person => {
+      const counts = personWeekCount[person.name] || new Array(8).fill(0);
+      html += `<tr><td class="hm-name"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${person.color};margin-right:6px;"></span>${esc(person.name)}</td>`;
+      counts.forEach(n => { html += `<td class="hm-cell ${hmClass(n)}" title="${n} งาน">${n || '·'}</td>`; });
+      html += '</tr>';
+    });
+  });
+
+  html += '</tbody></table>';
+  html += `<div class="hm-legend">
+    <span>จำนวนงานต่อสัปดาห์:</span>
+    <div class="hm-legend-item"><span class="hm-legend-swatch hm-0"></span>ว่าง</div>
+    <div class="hm-legend-item"><span class="hm-legend-swatch hm-1"></span>1</div>
+    <div class="hm-legend-item"><span class="hm-legend-swatch hm-2"></span>2</div>
+    <div class="hm-legend-item"><span class="hm-legend-swatch hm-3"></span>3</div>
+    <div class="hm-legend-item"><span class="hm-legend-swatch hm-4"></span>4</div>
+    <div class="hm-legend-item"><span class="hm-legend-swatch hm-5"></span>5+</div>
+  </div></div>`;
+
+  el.innerHTML = html;
+}
 
 function renderDeadlines(){
   const el = document.getElementById('deadlineList');
