@@ -1668,9 +1668,13 @@ function renderCalendar(){
           const ownerColor = firstOwner ? personColor(firstOwner) : null;
           if(ownerColor){
             itemBg = `background:${ownerColor}18;border-color:${ownerColor}55;`;
+          } else if(wc){
+            itemBg = `background:${wc}30;border-color:${wc}77;`;
           } else if(it.projColor){
             itemBg = `background:${it.projColor}18;border-color:${it.projColor}55;`;
           }
+        } else if(wc){
+          itemBg = `background:${wc}30;border-color:${wc}77;`;
         } else if(it.projColor){
           itemBg = `background:${it.projColor}18;border-color:${it.projColor}55;`;
         }
@@ -1734,16 +1738,20 @@ function renderCalendar(){
         const wc = worktypeColorOf(it.workType);
         const borderStyle = wc ? `border-left:3px solid ${wc};` : '';
 
-        // Color priority: person color (when team filtered) > project color > team color
+        // Color priority: person color (when team filtered) > worktype color > project color
         let barBg = '';
         if(calTeamFilter !== 'all'){
           const firstOwner = parseOwners(it.owner || '')[0];
           const ownerColor = firstOwner ? personColor(firstOwner) : null;
           if(ownerColor){
             barBg = `background:${ownerColor}22;color:${ownerColor};border-color:${ownerColor}55;`;
+          } else if(wc){
+            barBg = `background:${wc}55;color:var(--ink);border-color:${wc}aa;`;
           } else if(it.projColor){
             barBg = `background:${it.projColor}22;color:${it.projColor};border-color:${it.projColor}55;`;
           }
+        } else if(wc){
+          barBg = `background:${wc}55;color:var(--ink);border-color:${wc}aa;`;
         } else if(it.projColor){
           barBg = `background:${it.projColor}22;color:${it.projColor};border-color:${it.projColor}55;`;
         }
