@@ -960,6 +960,11 @@ let wtAssignMode = false;
 let wtSelectedColor = WORKTYPE_PALETTE[0];
 const STORE_KEY = "workload-board-projects";
 const CAL_NOTES_KEY = "workload-board-calnotes";
+// Baked-in defaults so the notes survive even if the browser's local storage gets cleared
+const CAL_NOTES_SEED = {
+  ZO: `<div>ดอกไม้ - อาจจะต้องเล่าให้ ลค ฟังใหม่อีกรอบ แพลนอาจจะกลับมาปีหน้า</div><div>JAKY - ต้องดูเรื่องไทม์ไลน์โปรดักชั่น ส่งให้ลูกค้าวันที่ 29 ต้องเสร็จทุกอย่าง</div><div>VTM - Campaign ไทม์ไลน์ขาย หรือ คุยกับ ลค. ฟิกไว้แล้ว</div><div>Geely - รอประกาศผล</div><div><mark>Social - Content gaysorn mockup 7 ชิ้น</mark></div>`,
+  Dream: `<div><mark>Gaysorn - DEC  / ขาย 2 รอบ / THEME 6-9 / 23-27 - Mock // TBC 12-20 Mock up content</mark></div><div><mark>TOPPO - DEC 23-27 TBC</mark></div><div>TOPPO - NOV - Brief Designer</div><div>Gaysorn NOV - Freelance Brief Designer</div><div>18-19 / NOV - พี่ตรีมลา</div><div>8-9 / MOV - เพรวลา</div><div>16-17 / Mockup ช็อคโกฟรุต ช็อคโกฟรุต - คุยไลน์กับพี่โอ๋  20/23 - ขาย พี่เอก</div>`
+};
 let calNotes = {};
 let calNotesTeam = null;
 
@@ -2013,10 +2018,14 @@ function queueSave(){
 
 // ----- Calendar "unscheduled work" notes: free-type, per-team, highlightable -----
 async function loadCalNotes(){
+  let stored = {};
   try{
     const res = await storage.get(CAL_NOTES_KEY, true);
-    if(res && res.value) calNotes = JSON.parse(res.value);
-  }catch(e){ calNotes = {}; }
+    if(res && res.value) stored = JSON.parse(res.value) || {};
+  }catch(e){ stored = {}; }
+  // Seed defaults fill in any team with nothing saved yet; saved content always wins
+  calNotes = {...CAL_NOTES_SEED};
+  Object.keys(stored).forEach(k => { if(stored[k]) calNotes[k] = stored[k]; });
 }
 
 let calNotesSaveTimer = null;
