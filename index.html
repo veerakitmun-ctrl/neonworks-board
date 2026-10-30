@@ -224,19 +224,17 @@
   .cal-agenda-item-name{font-size:12.5px;font-weight:600;color:var(--ink);white-space:normal;word-break:break-word;line-height:1.3;}
   .cal-agenda-item-meta{font-size:10.5px;color:var(--ink-soft);margin-top:2px;}
   .cal-legend .sw{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;}
-  /* Unscheduled-work note: items that have no start/deadline yet, so they don't appear on the calendar grid */
+  /* Unscheduled-work note: a free-type notes box per team, for jobs not yet placed on the calendar grid */
   .cal-unscheduled{margin-top:18px;border:1px dashed var(--line);border-radius:10px;padding:12px 14px;}
-  .cal-unscheduled-empty{font-size:12px;color:var(--ink-soft);}
-  .cal-unscheduled-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);margin-bottom:8px;}
-  .cal-unscheduled-team{margin-bottom:10px;}
-  .cal-unscheduled-team:last-child{margin-bottom:0;}
-  .cal-unscheduled-team-name{font-size:11.5px;font-weight:700;margin-bottom:4px;display:flex;align-items:center;gap:6px;}
-  .cal-unscheduled-team-name .sw{display:inline-block;width:8px;height:8px;border-radius:2px;}
-  .cal-unscheduled-list{display:flex;flex-direction:column;gap:3px;}
-  .cal-unscheduled-item{font-size:12px;color:var(--ink);padding-left:14px;position:relative;cursor:pointer;}
-  .cal-unscheduled-item:hover{color:var(--accent,var(--dream));text-decoration:underline;}
-  .cal-unscheduled-item::before{content:'•';position:absolute;left:3px;color:var(--ink-soft);}
-  .cal-unscheduled-item .proj{color:var(--ink-soft);}
+  .cal-unscheduled-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);margin-bottom:10px;}
+  .cal-notes-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px;}
+  .cal-notes-select{font:inherit;font-size:13px;padding:6px 10px;border-radius:8px;border:1px solid var(--line);background:var(--card,#fff);color:var(--ink);cursor:pointer;}
+  .cal-notes-btn{font:inherit;font-size:12.5px;padding:6px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer;}
+  .cal-notes-btn:hover{background:var(--line);}
+  .cal-notes-editor{min-height:90px;max-height:260px;overflow-y:auto;font-size:13px;line-height:1.6;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--card,#fff);outline:none;white-space:pre-wrap;word-break:break-word;}
+  .cal-notes-editor:empty::before{content:attr(data-placeholder);color:var(--ink-soft);}
+  .cal-notes-editor mark{background:#fff3a0;color:inherit;border-radius:2px;padding:0 1px;}
+  @media (prefers-color-scheme: dark){ .cal-notes-editor mark{background:#8a6d00;} }
 
   .proj-cell .proj-row{display:flex;align-items:center;gap:4px;}
   .proj-color-dot{width:12px;height:12px;border-radius:50%;border:1.5px solid transparent;cursor:pointer;flex-shrink:0;transition:transform .12s;display:inline-block;position:relative;}
@@ -560,7 +558,15 @@
       <span>แถบยาว = ช่วงวันที่ทำงาน (เริ่ม–จบ)</span>
       <span id="calLegendWt" style="display:contents;"></span>
     </div>
-    <div class="cal-unscheduled" id="calUnscheduled"></div>
+    <div class="cal-unscheduled" id="calUnscheduled">
+      <div class="cal-unscheduled-title">📝 โน้ตงานที่ยังไม่ได้ลงวันในปฏิทิน</div>
+      <div class="cal-notes-bar">
+        <select id="calNotesTeamSelect" class="cal-notes-select"></select>
+        <button type="button" id="calNotesHighlightBtn" class="cal-notes-btn" title="ไฮไลท์ข้อความที่เลือก">🖍 ไฮไลท์</button>
+        <button type="button" id="calNotesUnhighlightBtn" class="cal-notes-btn" title="เอาไฮไลท์ออกจากข้อความที่เลือก">ล้างไฮไลท์</button>
+      </div>
+      <div class="cal-notes-editor" id="calNotesEditor" contenteditable="true"></div>
+    </div>
   </div>
 
   <div id="viewWorkload" class="view-section">
@@ -953,6 +959,9 @@ let wtTarget = null;
 let wtAssignMode = false;
 let wtSelectedColor = WORKTYPE_PALETTE[0];
 const STORE_KEY = "workload-board-projects";
+const CAL_NOTES_KEY = "workload-board-calnotes";
+let calNotes = {};
+let calNotesTeam = null;
 
 // Storage abstraction: use Claude's window.storage if available, else localStorage
 const storage = {
@@ -1758,52 +1767,6 @@ function renderCalendar(){
     });
   });
 
-  // Collect items with NO date at all (neither start nor deadline) — these never appear on the grid above
-  const unscheduledByTeam = {};
-  TEAMS.forEach(t => { unscheduledByTeam[t.key] = []; });
-  projects.forEach(p => {
-    if(calTeamFilter !== 'all' && p.team !== calTeamFilter) return;
-    if(!unscheduledByTeam[p.team]) unscheduledByTeam[p.team] = [];
-    const subtasks = p.subtasks || [];
-    const pOwners = parseOwners(p.owner);
-    if(subtasks.length === 0 && p.name && !p.start && !p.deadline){
-      if(calPersonFilter === 'all' || pOwners.some(n => n.toLowerCase() === calPersonFilter.toLowerCase())){
-        unscheduledByTeam[p.team].push({projectName: p.name, taskName: null, projectId: p.id, subtaskId: null});
-      }
-    }
-    subtasks.forEach(s => {
-      if(!s.name || s.start || s.deadline) return;
-      const sOwners = parseOwners(s.owner);
-      if(calPersonFilter !== 'all' && !sOwners.some(n => n.toLowerCase() === calPersonFilter.toLowerCase())) return;
-      unscheduledByTeam[p.team].push({projectName: p.name, taskName: s.name, projectId: p.id, subtaskId: s.id});
-    });
-  });
-
-  const unschedEl = document.getElementById('calUnscheduled');
-  if(unschedEl){
-    const teamColorVar = t => t==='Dream'?'var(--dream)':t==='ZO'?'var(--zo)':t==='Designer'?'var(--designer)':'var(--vertix)';
-    const teamsToShow = calTeamFilter === 'all' ? TEAMS.map(t => t.key) : [calTeamFilter];
-    const totalUnsched = teamsToShow.reduce((sum, t) => sum + (unscheduledByTeam[t] || []).length, 0);
-    if(totalUnsched === 0){
-      unschedEl.innerHTML = `<div class="cal-unscheduled-empty">✓ ทุกงานในมุมมองนี้ถูกลงวันในปฏิทินแล้ว</div>`;
-    } else {
-      let unschedHtml = `<div class="cal-unscheduled-title">⚠ งานที่ยังไม่ได้ลงวันในปฏิทิน (${totalUnsched})</div>`;
-      teamsToShow.forEach(teamKey => {
-        const list = unscheduledByTeam[teamKey] || [];
-        if(list.length === 0) return;
-        const teamLabel = (TEAMS.find(t => t.key === teamKey) || {}).label || teamKey;
-        unschedHtml += `<div class="cal-unscheduled-team">
-          <div class="cal-unscheduled-team-name"><span class="sw" style="background:${teamColorVar(teamKey)}"></span>${esc(teamLabel)} (${list.length})</div>
-          <div class="cal-unscheduled-list">${list.map(it => {
-            const label = it.taskName ? `<span class="proj">${esc(it.projectName)} ·</span> ${esc(it.taskName)}` : esc(it.projectName);
-            return `<div class="cal-unscheduled-item" onclick="openCalDetail('${escAttr(it.projectId || '')}','${escAttr(it.subtaskId || '')}')">${label}</div>`;
-          }).join('')}</div>
-        </div>`;
-      });
-      unschedEl.innerHTML = unschedHtml;
-    }
-  }
-
   // Keep the person dropdown in sync with the current roster, preserving selection
   const personSelect = document.getElementById('calPersonSelect');
   if(personSelect){
@@ -2046,6 +2009,102 @@ async function persist(retryCount = 0){
 function queueSave(){
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => persist(0), 500);
+}
+
+// ----- Calendar "unscheduled work" notes: free-type, per-team, highlightable -----
+async function loadCalNotes(){
+  try{
+    const res = await storage.get(CAL_NOTES_KEY, true);
+    if(res && res.value) calNotes = JSON.parse(res.value);
+  }catch(e){ calNotes = {}; }
+}
+
+let calNotesSaveTimer = null;
+function queueSaveCalNotes(){
+  clearTimeout(calNotesSaveTimer);
+  calNotesSaveTimer = setTimeout(async () => {
+    try{ await storage.set(CAL_NOTES_KEY, JSON.stringify(calNotes), true); }catch(e){}
+  }, 500);
+}
+
+function saveCurrentCalNote(){
+  const editor = document.getElementById('calNotesEditor');
+  if(!editor || !calNotesTeam) return;
+  calNotes[calNotesTeam] = editor.innerHTML;
+  queueSaveCalNotes();
+}
+
+function loadCalNoteIntoEditor(){
+  const editor = document.getElementById('calNotesEditor');
+  if(!editor || !calNotesTeam) return;
+  editor.innerHTML = calNotes[calNotesTeam] || '';
+}
+
+function highlightCalNoteSelection(){
+  const editor = document.getElementById('calNotesEditor');
+  const sel = window.getSelection();
+  if(!editor || !sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+  const range = sel.getRangeAt(0);
+  if(!editor.contains(range.commonAncestorContainer)) return;
+  const mark = document.createElement('mark');
+  try{
+    range.surroundContents(mark);
+  }catch(e){
+    const content = range.extractContents();
+    mark.appendChild(content);
+    range.insertNode(mark);
+  }
+  sel.removeAllRanges();
+}
+
+function unhighlightCalNoteSelection(){
+  const editor = document.getElementById('calNotesEditor');
+  const sel = window.getSelection();
+  if(!editor || !sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+  const range = sel.getRangeAt(0);
+  if(!editor.contains(range.commonAncestorContainer)) return;
+  editor.querySelectorAll('mark').forEach(m => {
+    if(!range.intersectsNode(m)) return;
+    const parent = m.parentNode;
+    while(m.firstChild) parent.insertBefore(m.firstChild, m);
+    parent.removeChild(m);
+  });
+  sel.removeAllRanges();
+}
+
+function initCalNotesUI(){
+  const select = document.getElementById('calNotesTeamSelect');
+  const editor = document.getElementById('calNotesEditor');
+  const highlightBtn = document.getElementById('calNotesHighlightBtn');
+  const unhighlightBtn = document.getElementById('calNotesUnhighlightBtn');
+  if(!select || !editor) return;
+
+  select.innerHTML = TEAMS.map(t => `<option value="${escAttr(t.key)}">${esc(t.label)}</option>`).join('');
+  calNotesTeam = TEAMS[0] ? TEAMS[0].key : null;
+  select.value = calNotesTeam || '';
+  const setPlaceholder = () => {
+    const teamLabel = (TEAMS.find(t => t.key === calNotesTeam) || {}).label || calNotesTeam || '';
+    editor.setAttribute('data-placeholder', `พิมพ์โน้ตงานที่ยังไม่ได้ลงวันของทีม ${teamLabel} ที่นี่...`);
+  };
+  setPlaceholder();
+  loadCalNoteIntoEditor();
+
+  select.addEventListener('change', () => {
+    calNotesTeam = select.value;
+    setPlaceholder();
+    loadCalNoteIntoEditor();
+  });
+
+  editor.addEventListener('input', saveCurrentCalNote);
+
+  if(highlightBtn) highlightBtn.addEventListener('click', () => {
+    highlightCalNoteSelection();
+    saveCurrentCalNote();
+  });
+  if(unhighlightBtn) unhighlightBtn.addEventListener('click', () => {
+    unhighlightCalNoteSelection();
+    saveCurrentCalNote();
+  });
 }
 
 function updateField(id, field, value){
@@ -2520,9 +2579,10 @@ window.addEventListener('resize', () => {
 
 (async function init(){
   applyLockState();
-  await Promise.all([loadData(), loadPeople(), loadWorktypes()]);
+  await Promise.all([loadData(), loadPeople(), loadWorktypes(), loadCalNotes()]);
   await ensureWorktypesFromProjects();
   renderAll();
+  initCalNotesUI();
 })();
 </script>
 </body>
